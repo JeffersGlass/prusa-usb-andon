@@ -10,3 +10,5 @@ The relay-control-code was original forked from Pavel-A's usb-relay-hid library;
 There are a variety of cheap Andons available from online vendors these days. I hesitate to call them "stack lights" since most of them donts actually stack - rather, they are a single internal PCB with multiple levels of SMD LEDs, which a multicolor plastic shell that slides over them to provide color indication. However, if you're looking for these online, [seaching "stack lights" on online vendor sites](https://www.aliexpress.com/wholesale?catId=0&initiative_id=SB_20200829101432&origin=y&SearchText=stack+light) is the way to go. 
 
 You may wish to think about your control voltage vs. your Andon voltage when purchasing a USB Relay Board and an Andon - having them be the same voltage simplifies power supply wiring, though this is not required.
+
+
