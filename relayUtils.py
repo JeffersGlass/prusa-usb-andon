@@ -11,6 +11,7 @@ import sys, os, time
 import ctypes
 import logging
 import threading
+from sys import exit
 
 ##Utility Functions
 
@@ -49,10 +50,8 @@ usb_relay_lib_funcs = [
 
 ##Class definitions
 
-
-
 class relayBoard():
-    def __init__(self, libpath='.'):
+    def __init__(self, libpath='C:\sel'):
         self.libpath = libpath
 
         self.libfile = {'nt':   "usb_relay_device.dll", 
@@ -65,14 +64,15 @@ class relayBoard():
         #All of these will be initialize in openDevById after we know how many relays there are:
         self.blinking = {}#True or false, depending on if a pin is blinking
         self.blinkThreads = None #holds blinking threads
+        self.blinkLock = threading.Lock()
 
     def loadLib(self):
         if not self.DLL:
-            logging.debug("Loading DLL: %s" % ('/'.join([self.libpath,self.libfile])))
+            logging.debug("Loading DLL: %s" % ('\\'.join([self.libpath,self.libfile])))
             try:
-                self.DLL = ctypes.CDLL( '/'.join([self.libpath, self.libfile]) )
-            except OSError:
-                fail("Failed to load lib")
+                self.DLL = ctypes.CDLL( '\\'.join([self.libpath, self.libfile]) )
+            except OSError as e:
+                raise e
         else:
             print("Lib already loaded")
         self.getLibFunctions()
@@ -127,7 +127,12 @@ class relayBoard():
         for i in range(1, self.numRelays+1):
           self.blinking[i] = False # = [False for i in range(1, self.numRelays+1)]
         self.blinkThread = threading.Thread(target=self.__blink) #[threading.Thread(target=self.__blink, args=(i,)) for i in range (1, self.numRelays+1)]
-        self.blinkThread.start()
+        try:
+          self.blinkThread.start()
+        except (KeyboardInterrupt, SystemExit):
+          self.blinkAlive = False
+          self.blinkThread.join()
+          exit()
 
 
 
@@ -161,9 +166,17 @@ class relayBoard():
         self.DLL = None
         logging.info("Lib closed")
 
+    def __close(self, num):
+       retVal = self.DLL.usb_relay_device_open_one_relay_channel(self.device, num)
+       return retVal
+
+    def __open(self, num):
+       retVal = self.DLL.usb_relay_device_close_one_relay_channel(self.device, num)
+       return retVal
+
     def closeRelay(self, num):
       if 0 < num <= self.numRelays:
-        self.blinking[num-1] = False
+        self.blinking[num] = False
         retVal = self.DLL.usb_relay_device_open_one_relay_channel(self.device, num)
         if retVal != 0:
          fail("Faied to close relay channel " + num)
@@ -171,7 +184,7 @@ class relayBoard():
     
     def openRelay(self, num):
       if 0 < num <= self.numRelays:
-        self.blinking[num-1] = False
+        self.blinking[num] = False
         retVal = self.DLL.usb_relay_device_close_one_relay_channel(self.device, num)
         if retVal != 0:
          fail("Faied to close relay channel " + num)
@@ -192,28 +205,41 @@ class relayBoard():
       return 0
 
     def blinkRelay(self, num, timing = 1):
-        self.blinking[num] = True
+        with self.blinkLock:
+            self.blinking[num] = True
+        logging.debug("Relay " + str(num) + " is now set to BLINK")
+        logging.debug(self.blinking)
 
     def noBlink(self, num):
-        self.blinking[num] = False
+        with self.blinkLock:
+            self.blinking[num] = False
+        logging.debug("Relay " + str(num) + " is now set to NOT BLINK")
+        logging.debug(self.blinking)
 
     def __blink(self):
         while (self.blinkAlive):
           logging.debug(self.blinking)
-          for i in range(1, self.numRelays+1):
-            if self.blinking[i] == True:
-              self.closeRelay(i)
-              logging.debug("Blink Close: " + str(i))
+          with self.blinkLock:
+              for i in range(1, self.numRelays+1):
+                if self.blinking[i] == True:
+                  self.__close(i)
+                  logging.debug("Blink Close: " + str(i))
 
-          time.sleep(1)
+          time.sleep(.5)
 
           logging.debug(self.blinking)
-          for i in range(1, self.numRelays+1):
-            if self.blinking[i] == True:
-              self.openRelay(i)
-              logging.debug("Blink Open: " + str(i))
-          time.sleep(1)
+          with self.blinkLock:
+              for i in range(1, self.numRelays+1):
+                if self.blinking[i] == True:
+                  self.__open(i)
+                  logging.debug("Blink Open: " + str(i))
+          time.sleep(.5)
 
         logging.info("Blink Thread stopped")
+
+    def closeRelayFor(self, num, time=1):
+        self.__close(num)
+        t = threading.Timer(time, self.__open, [num])
+        t.start()
 
 
