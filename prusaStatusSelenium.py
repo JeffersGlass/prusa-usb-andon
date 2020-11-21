@@ -6,6 +6,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+import requests
 
 import logging
 from gpiozero import LED
@@ -17,10 +18,15 @@ logging.basicConfig(level=logging.DEBUG)
 
 #TODO: replace with auto-discovery?
 printerIP = '192.168.1.2' 
-updateTime = 2 #seconds
+updateTime = 1 #seconds
+pauseInterval = 5 #updates
+pauseCounter = 0
 
 state = ''
 previousState = ''
+
+height = ''
+previousHeight = ''
 
 #exclude switches to remove "Being Controlled by Automated Software" banner
 chrome_options = webdriver.ChromeOptions()
@@ -62,10 +68,19 @@ else:
                 logging.debug("ELEMENT TEXT:" + str(t))
 
                 previousState = state
+
+                telemetry = requests.get('http://' + printerIP + '/api/telemetry')
+                previousHeight = height
+                height = telemetry.json()['pos_z_mm']
+                if height == previousHeight:
+                        pauseCounter += 1
+                else: pauseCounter = 0
+                logging.debug("Z height is now " + str(height))
                 
                 ind = "Printer status:"
                 statusStart = t.index(ind) + len(ind)
                 state = t[statusStart:].split("\n")[0].strip(" ")
+                if pauseCounter > pauseInterval: state = "Paused"
                 logging.debug("StateText:<" + str(state) + ">")
                 if state == "Operational" or state == "Idle":
                         logging.debug('Mode is operational')
